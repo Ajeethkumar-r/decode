@@ -132,11 +132,11 @@ const rint = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
 const VOICES = {
   real: {
     id: "real", name: "Real Life", emoji: "🌍", tagline: "Your actual world: money, battery, friends",
-    fonts: { display: "'Fraunces', Georgia, serif", body: "'Nunito', system-ui, sans-serif", mono: "'JetBrains Mono', monospace", h1: 26, big: 31, logo: 20 },
-    blocky: false,
+    fonts: { display: "'Plus Jakarta Sans', system-ui, sans-serif", body: "'Plus Jakarta Sans', system-ui, sans-serif", mono: "'JetBrains Mono', monospace", h1: 25, big: 30, logo: 19 },
+    blocky: false, airbnb: true,
     colors: {
-      dark: { bg: "#101D19", panel: "#1A2B25", edge: "#31513F", slot: "#0C1712", ink: "#EDF8F1", dim: "#A3C1B0", accent: "#52C98F", onAccent: "#04170D", gold: "#F2BC5C", teal: "#54D6C9", violet: "#A79CF0" },
-      light: { bg: "#F1F7F2", panel: "#FFFFFF", edge: "#D2E4D7", slot: "#E9F2EB", ink: "#172B21", dim: "#4E6B5B", accent: "#12714A", onAccent: "#FFFFFF", gold: "#8A6106", teal: "#0A6E63", violet: "#5843C4" },
+      dark: { bg: "#191919", panel: "#232323", edge: "#3B3B3B", slot: "#1D1D1D", ink: "#F5F5F5", dim: "#ACACAC", accent: "#FF6B8A", onAccent: "#2B0210", gold: "#E4B24A", teal: "#4CC9A6", violet: "#B49CF5" },
+      light: { bg: "#F7F7F7", panel: "#FFFFFF", edge: "#DDDDDD", slot: "#F7F7F7", ink: "#222222", dim: "#6A6A6A", accent: "#E00B41", onAccent: "#FFFFFF", gold: "#A16207", teal: "#0F7A5C", violet: "#6D28D9" },
     },
     sidekick: { name: "Coach Sam", persona: "You are Coach Sam, a friendly older-brother/sister type coach. IMPORTANT: use very simple English — short sentences, common everyday words a 14-year-old English learner knows." },
     appName: "DECODE",
@@ -171,11 +171,11 @@ const VOICES = {
   },
   arcade: {
     id: "arcade", name: "Retro Arcade", emoji: "🕹️", tagline: "Pixels, tokens and high scores",
-    fonts: { display: "'Press Start 2P', monospace", body: "'Outfit', system-ui, sans-serif", mono: "'JetBrains Mono', monospace", h1: 15, big: 19, logo: 12 },
-    blocky: true,
+    fonts: { display: "'Plus Jakarta Sans', system-ui, sans-serif", body: "'Plus Jakarta Sans', system-ui, sans-serif", mono: "'JetBrains Mono', monospace", h1: 25, big: 30, logo: 19 },
+    blocky: false, airbnb: true,
     colors: {
-      dark: { bg: "#151A33", panel: "#1D2344", edge: "#343D73", slot: "#101430", ink: "#F1F3FF", dim: "#9CA3D6", accent: "#FF4D9D", onAccent: "#2B041A", gold: "#FFE04D", teal: "#4DFFDA", violet: "#8F7BFF" },
-      light: { bg: "#EEF0FA", panel: "#FFFFFF", edge: "#C9CDEB", slot: "#E4E7F6", ink: "#23274B", dim: "#4F548A", accent: "#B01F6B", onAccent: "#FFFFFF", gold: "#8F6508", teal: "#0B7A6E", violet: "#4A3BD1" },
+      dark: { bg: "#191919", panel: "#232323", edge: "#3B3B3B", slot: "#1D1D1D", ink: "#F5F5F5", dim: "#ACACAC", accent: "#FF6B8A", onAccent: "#2B0210", gold: "#E4B24A", teal: "#4CC9A6", violet: "#B49CF5" },
+      light: { bg: "#F7F7F7", panel: "#FFFFFF", edge: "#DDDDDD", slot: "#F7F7F7", ink: "#222222", dim: "#6A6A6A", accent: "#E00B41", onAccent: "#FFFFFF", gold: "#A16207", teal: "#0F7A5C", violet: "#6D28D9" },
     },
     sidekick: { name: "Pix", persona: "You are Pix, a tiny happy pixel sprite from an arcade game. Fun and playful, never babyish. IMPORTANT: use very simple English — short sentences, common words a 14-year-old English learner knows." },
     appName: "DECODE ▸",
@@ -590,7 +590,7 @@ function buildPalette(mode, voice) {
     accentGrad: v.accent, /* flat — no gradients anywhere */
     gold: v.gold, teal: v.teal, violet: v.violet,
     grid: v.edge, axis: v.dim,
-    shadow: mode === "dark" ? "0 10px 32px rgba(0,0,0,0.45)" : "0 8px 24px rgba(40,40,70,0.10)",
+    shadow: mode === "dark" ? "0 10px 32px rgba(0,0,0,0.45)" : "0 2px 8px rgba(0,0,0,0.07)",
     accentSoft: v.accent + "22", tealSoft: v.teal + "1E", violetSoft: v.violet + "1C", goldSoft: v.gold + "20",
   };
 }
@@ -621,15 +621,17 @@ function useIsMobile() {
 
 function makeStyles(T, F, V, mobile) {
   const blocky = V && V.blocky;
-  const R = blocky ? { panel: 6, btn: 4, chip: 4, box: 6 } : { panel: 20, btn: 14, chip: 12, box: 16 };
-  const blockShadow = blocky ? `4px 4px 0 ${T.edge}` : null;
+  const air = V && V.airbnb;
+  const R = blocky ? { panel: 6, btn: 4, chip: 4, box: 6 } : air ? { panel: 16, btn: 10, chip: 10, box: 12 } : { panel: 20, btn: 14, chip: 12, box: 16 };
+  const blockShadow = blocky ? `4px 4px 0 ${T.edge}` : air ? "0 1px 2px rgba(0,0,0,0.07)" : null;
   return {
     app: { minHeight: "100vh", background: T.bg, color: T.ink, fontFamily: F.body, display: "flex", justifyContent: "center", padding: mobile ? "12px 10px 70px" : "20px 16px 80px", transition: "background .5s ease,color .5s ease" },
     shell: { width: "100%", maxWidth: 720 },
     eyebrow: { fontFamily: F.mono, fontSize: 10.5, letterSpacing: "0.2em", textTransform: "uppercase", color: T.dim, display: "flex", alignItems: "center", gap: 6 },
     h1: { fontFamily: F.display, fontSize: Math.max((F.h1 || 26) - (mobile ? 3 : 0), 13), fontWeight: 700, margin: "8px 0 4px", letterSpacing: "-0.01em", lineHeight: 1.35 },
     panel: { background: T.panel, border: `${blocky ? 2 : 1}px solid ${T.edge}`, borderRadius: R.panel, padding: mobile ? 16 : 24, marginTop: mobile ? 12 : 16, boxShadow: blockShadow || T.shadow, transition: "background .5s ease,border .5s ease" },
-    btn: (primary, grad) => ({ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: mobile ? "12px 16px" : "13px 22px", borderRadius: R.btn, border: primary ? "none" : `1.5px solid ${T.edge}`, background: primary ? (grad || T.accent) : "transparent", color: primary ? T.onAccent : T.ink, fontFamily: F.body, fontWeight: 700, fontSize: 15, cursor: "pointer", boxShadow: primary ? (blocky ? `3px 3px 0 ${T.edge}` : `0 6px 18px ${T.accent}44`) : "none" }),
+    h1Tight: { letterSpacing: "-0.02em" },
+    btn: (primary, grad) => ({ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: mobile ? "12px 16px" : "13px 22px", borderRadius: R.btn, border: primary ? "none" : `1.5px solid ${air ? T.ink : T.edge}`, background: primary ? (grad || T.accent) : "transparent", color: primary ? T.onAccent : T.ink, fontFamily: F.body, fontWeight: 700, fontSize: 15, cursor: "pointer", boxShadow: primary ? (blocky ? `3px 3px 0 ${T.edge}` : air ? "none" : `0 6px 18px ${T.accent}44`) : "none" }),
     chip: (active) => ({ padding: "12px 15px", borderRadius: R.chip, border: `1.5px solid ${active ? T.accent : T.edge}`, background: active ? T.accentSoft : T.slot, color: active ? T.accent : T.ink, fontFamily: F.body, fontWeight: 600, fontSize: 14, cursor: "pointer", textAlign: "left", lineHeight: 1.5, transition: "border .15s ease, transform .1s ease" }),
     feedback: { marginTop: 14, padding: "13px 15px", borderRadius: 13, background: T.goldSoft, border: `1.5px solid ${T.gold}66`, color: T.gold, fontSize: 14, fontWeight: 600, lineHeight: 1.55 },
     good: { marginTop: 14, padding: "13px 15px", borderRadius: 13, background: T.tealSoft, border: `1.5px solid ${T.teal}66`, color: T.teal, fontSize: 14, fontWeight: 600, lineHeight: 1.55 },
@@ -886,7 +888,7 @@ function QuoteBanner() {
   const [i, setI] = useState(() => Math.floor(Math.random() * V.quotes.length));
   useEffect(() => { const t = setInterval(() => setI((v) => (v + 1) % V.quotes.length), 7000); return () => clearInterval(t); }, [V]);
   return (
-    <div style={{ marginTop: 14, padding: "13px 18px", borderRadius: 16, border: `1px solid ${T.gold}44`, background: T.goldSoft, display: "flex", alignItems: "center", gap: 11 }}>
+    <div style={{ marginTop: 14, padding: "13px 18px", borderRadius: 12, border: `1px solid ${T.edge}`, background: T.panel, boxShadow: "0 1px 2px rgba(0,0,0,0.05)", display: "flex", alignItems: "center", gap: 11 }}>
       <Sparkles size={17} color={T.gold} style={{ flexShrink: 0 }} />
       <div key={`${V.id}-${i}`} className="pd-quote" style={{ fontFamily: F.display, fontSize: 14.5, fontWeight: 600, color: T.ink, fontStyle: "normal" }}>
         {V.quotes[i % V.quotes.length]}
@@ -2221,7 +2223,7 @@ function CardPage() {
 export default function ProjectDecode() {
   if (typeof window !== "undefined" && window.location.pathname.replace(/\/$/, "") === "/card") return <CardPage />;
   const saved = useMemo(loadSave, []);
-  const [mode, setMode] = useState(saved?.mode || "dark");
+  const [mode, setMode] = useState(saved?.mode || "light");
   const [voice, setVoice] = useState(saved?.voice || "real");
   const [fontChoice, setFontChoice] = useState(saved?.fontChoice || "default");
   const [profile, setProfile] = useState(saved?.profile || null);
@@ -2365,7 +2367,7 @@ export default function ProjectDecode() {
   return (
     <UICtx.Provider value={{ T, S, F, V, mode, mobile }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Lora:wght@500;600;700&family=Nunito:wght@500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Press+Start+2P&family=JetBrains+Mono:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Fraunces:wght@600;700&family=Lora:wght@500;600;700&family=Nunito:wght@500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
         @keyframes pdQuoteIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
         .pd-quote { animation: pdQuoteIn .6s ease; }
         @keyframes pdPop { from { opacity: 0; transform: scale(.97) translateY(4px); } to { opacity: 1; transform: none; } }
