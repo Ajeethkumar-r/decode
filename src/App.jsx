@@ -1,5 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef, useContext, createContext } from "react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+/* recharts is heavy (~400KB) and only the Journey chart needs it —
+   loaded on demand so the main bundle stays small (React best practice) */
+function useRecharts() {
+  const [mod, setMod] = useState(null);
+  useEffect(() => { let ok = true; import("recharts").then((m) => ok && setMod(m)); return () => { ok = false; }; }, []);
+  return mod;
+}
 import { createClient } from "@supabase/supabase-js";
 import {
   Sun, Moon, Flame, Sparkles, Trophy, Award, Zap, Radio, Lock, Check, Send, Bot, Wand2, Eye,
@@ -132,12 +138,6 @@ const rint = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
 const VOICES = {
   real: {
     id: "real", name: "Real Life", emoji: "🌍", tagline: "Your actual world: money, battery, friends",
-    fonts: { display: "'Plus Jakarta Sans', system-ui, sans-serif", body: "'Plus Jakarta Sans', system-ui, sans-serif", mono: "'JetBrains Mono', monospace", h1: 25, big: 30, logo: 19 },
-    blocky: false, airbnb: true,
-    colors: {
-      dark: { bg: "#191919", panel: "#232323", edge: "#3B3B3B", slot: "#1D1D1D", ink: "#F5F5F5", dim: "#ACACAC", accent: "#FF6B8A", onAccent: "#2B0210", gold: "#E4B24A", teal: "#4CC9A6", violet: "#B49CF5" },
-      light: { bg: "#F7F7F7", panel: "#FFFFFF", edge: "#DDDDDD", slot: "#F7F7F7", ink: "#222222", dim: "#6A6A6A", accent: "#E00B41", onAccent: "#FFFFFF", gold: "#A16207", teal: "#0F7A5C", violet: "#6D28D9" },
-    },
     sidekick: { name: "Coach Sam", persona: "You are Coach Sam, a friendly older-brother/sister type coach. IMPORTANT: use very simple English — short sentences, common everyday words a 14-year-old English learner knows." },
     appName: "DECODE",
     steps: ["Read it", "Set it up", "Work it out"],
@@ -171,12 +171,6 @@ const VOICES = {
   },
   arcade: {
     id: "arcade", name: "Retro Arcade", emoji: "🕹️", tagline: "Pixels, tokens and high scores",
-    fonts: { display: "'Plus Jakarta Sans', system-ui, sans-serif", body: "'Plus Jakarta Sans', system-ui, sans-serif", mono: "'JetBrains Mono', monospace", h1: 25, big: 30, logo: 19 },
-    blocky: false, airbnb: true,
-    colors: {
-      dark: { bg: "#191919", panel: "#232323", edge: "#3B3B3B", slot: "#1D1D1D", ink: "#F5F5F5", dim: "#ACACAC", accent: "#FF6B8A", onAccent: "#2B0210", gold: "#E4B24A", teal: "#4CC9A6", violet: "#B49CF5" },
-      light: { bg: "#F7F7F7", panel: "#FFFFFF", edge: "#DDDDDD", slot: "#F7F7F7", ink: "#222222", dim: "#6A6A6A", accent: "#E00B41", onAccent: "#FFFFFF", gold: "#A16207", teal: "#0F7A5C", violet: "#6D28D9" },
-    },
     sidekick: { name: "Pix", persona: "You are Pix, a tiny happy pixel sprite from an arcade game. Fun and playful, never babyish. IMPORTANT: use very simple English — short sentences, common words a 14-year-old English learner knows." },
     appName: "DECODE ▸",
     steps: ["Read the level", "Build the combo", "Hit the score"],
@@ -575,6 +569,8 @@ const BADGES = [
   { id: "quizwhiz", name: "Quiz Whiz", desc: "Score 5/5 on the daily quiz", Icon: HelpCircle, test: (s) => (s.bestQuiz ?? 0) >= 5 },
   { id: "sharp", name: "Sharp Shooter", desc: "Perfect 6/6 in the daily game", Icon: Gamepad2, test: (s) => (s.bestGame ?? 0) >= 6 },
   { id: "starter", name: "Star Student", desc: "Earn 3 topic stars from self-tests", Icon: Star, test: (s) => (s.topicStars ?? []).length >= 3 },
+  { id: "formulamaster", name: "Formula Master", desc: "Perfect 8/8 in Formula Rush", Icon: Wand2, test: (s) => (s.bestFormula ?? 0) >= 8 },
+  { id: "storyteller", name: "Storyteller", desc: "Finish a whole story season", Icon: BookOpen, test: (s) => (s.storyProgress ?? 0) >= STORY_SEASON.chapters.length },
 ];
 const MILESTONES = [
   { xp: 0, title: "Novice" }, { xp: 200, title: "Signal Tracer" },
@@ -582,30 +578,61 @@ const MILESTONES = [
 ];
 
 /* ── theme construction: base mode × voice colors ───────────── */
-function buildPalette(mode, voice) {
-  const v = VOICES[voice].colors[mode];
+
+/* ═══ THEME SYSTEM — four complete design languages.
+   Visuals live HERE; worlds (real/arcade) are story packs only. ═══ */
+const THEME_PACKS = {
+  duo: {
+    id: "duo", name: "Playful Bold", emoji: "🟢", hint: "Chunky, fun, game-like",
+    dark: false, font: "'Nunito', system-ui, sans-serif",
+    colors: { bg: "#FFFFFF", panel: "#FFFFFF", edge: "#E5E5E5", edgeStrong: "#D0D0D0", slot: "#F7F7F7", ink: "#3C3C3C", dim: "#9A9A9A", accent: "#58CC02", accentDark: "#46A302", onAccent: "#FFFFFF", gold: "#E6A817", teal: "#1CB0F6", violet: "#CE82FF" },
+    style: { panel: 16, btn: 14, chip: 12, box: 12, border: 2, btn3d: true, shadow: "none", monoEyebrow: false },
+  },
+  notion: {
+    id: "notion", name: "Paper Minimal", emoji: "⬜", hint: "Quiet, clean, notebook",
+    dark: false, font: "'Inter', system-ui, sans-serif",
+    colors: { bg: "#FFFFFF", panel: "#FFFFFF", edge: "#EBEBEA", edgeStrong: "#E0E0DE", slot: "#F7F7F5", ink: "#37352F", dim: "#9B9A97", accent: "#2E75CC", accentDark: "#2E75CC", onAccent: "#FFFFFF", gold: "#9F6B00", teal: "#0F7B6C", violet: "#6940A5" },
+    style: { panel: 8, btn: 6, chip: 6, box: 6, border: 1, btn3d: false, shadow: "none", monoEyebrow: false },
+  },
+  midnight: {
+    id: "midnight", name: "Midnight Pro", emoji: "⬛", hint: "Dark, sharp, pro",
+    dark: true, font: "'Inter', system-ui, sans-serif",
+    colors: { bg: "#0B0B0F", panel: "#131318", edge: "#26262E", edgeStrong: "#33333D", slot: "#1A1A21", ink: "#F4F4F6", dim: "#8A8A96", accent: "#7C6FFF", accentDark: "#6A5CFF", onAccent: "#FFFFFF", gold: "#E8C468", teal: "#4CC9A6", violet: "#A88BFF" },
+    style: { panel: 12, btn: 9, chip: 8, box: 8, border: 1, btn3d: false, shadow: "0 0 0 1px rgba(124,111,255,0.07)", monoEyebrow: true },
+  },
+  calm: {
+    id: "calm", name: "Soft Focus", emoji: "🟠", hint: "Warm, airy, calming",
+    dark: false, font: "'Nunito', system-ui, sans-serif",
+    colors: { bg: "#FAF6F0", panel: "#FFFFFF", edge: "#F0E9DF", edgeStrong: "#E7DDCE", slot: "#FBF8F3", ink: "#3D3A36", dim: "#A39C92", accent: "#F0842C", accentDark: "#E0731B", onAccent: "#FFFFFF", gold: "#D9A441", teal: "#5E9678", violet: "#B08BC9" },
+    style: { panel: 22, btn: 999, chip: 14, box: 14, border: 0, btn3d: false, shadow: "0 6px 20px rgba(160,130,90,0.10)", monoEyebrow: false },
+  },
+};
+
+function buildPalette(themeKey) {
+  const TH = THEME_PACKS[themeKey] || THEME_PACKS.duo;
+  const v = TH.colors;
   return {
-    bg: v.bg, panel: v.panel, edge: v.edge, edgeSoft: v.edge + "99", slot: v.slot,
-    ink: v.ink, dim: v.dim, accent: v.accent, onAccent: v.onAccent,
-    accentGrad: v.accent, /* flat — no gradients anywhere */
-    gold: v.gold, teal: v.teal, violet: v.violet,
+    bg: v.bg, panel: v.panel, edge: v.edge, edgeStrong: v.edgeStrong, edgeSoft: v.edge + "99", slot: v.slot,
+    ink: v.ink, dim: v.dim, accent: v.accent, accentDark: v.accentDark, onAccent: v.onAccent,
+    accentGrad: v.accent, gold: v.gold, teal: v.teal, violet: v.violet,
     grid: v.edge, axis: v.dim,
-    shadow: mode === "dark" ? "0 10px 32px rgba(0,0,0,0.45)" : "0 2px 8px rgba(0,0,0,0.07)",
-    accentSoft: v.accent + "22", tealSoft: v.teal + "1E", violetSoft: v.violet + "1C", goldSoft: v.gold + "20",
+    shadow: TH.style.shadow !== "none" ? TH.style.shadow : TH.dark ? "0 10px 32px rgba(0,0,0,0.45)" : "none",
+    accentSoft: v.accent + (TH.dark ? "26" : "1C"), tealSoft: v.teal + "1E", violetSoft: v.violet + "1C", goldSoft: v.gold + "20",
   };
 }
 
 /* ── user-selectable font packs (profile setting) ───────────── */
 const FONT_CHOICES = {
-  default: { label: "World default", hint: "Matches the theme" },
+  default: { label: "Theme default", hint: "Matches your theme" },
   clean:   { label: "Clean",  hint: "Modern & simple",  display: "'Outfit', system-ui, sans-serif",  body: "'Outfit', system-ui, sans-serif" },
   friendly:{ label: "Friendly", hint: "Round & soft",   display: "'Nunito', system-ui, sans-serif",  body: "'Nunito', system-ui, sans-serif" },
   book:    { label: "Book",   hint: "Like a storybook", display: "'Fraunces', Georgia, serif",       body: "'Lora', Georgia, serif" },
 };
-function resolveFonts(V, choice) {
-  if (!choice || choice === "default") return V.fonts;
+function resolveFonts(TH, choice) {
+  const base = { display: TH.font, body: TH.font, mono: "'JetBrains Mono', monospace", h1: 24, big: 29, logo: 20 };
+  if (!choice || choice === "default") return base;
   const f = FONT_CHOICES[choice];
-  return { display: f.display, body: f.body, mono: V.fonts.mono, h1: 24, big: 29, logo: 18 };
+  return { ...base, display: f.display, body: f.body };
 }
 
 /* ── responsive: one hook, styles adapt everywhere ──────────── */
@@ -619,25 +646,34 @@ function useIsMobile() {
   return m;
 }
 
-function makeStyles(T, F, V, mobile) {
-  const blocky = V && V.blocky;
-  const air = V && V.airbnb;
-  const R = blocky ? { panel: 6, btn: 4, chip: 4, box: 6 } : air ? { panel: 16, btn: 10, chip: 10, box: 12 } : { panel: 20, btn: 14, chip: 12, box: 16 };
-  const blockShadow = blocky ? `4px 4px 0 ${T.edge}` : air ? "0 1px 2px rgba(0,0,0,0.07)" : null;
+function makeStyles(T, F, TH, mobile) {
+  const st = TH.style;
+  const R = { panel: st.panel, btn: st.btn, chip: st.chip, box: st.box };
   return {
     app: { minHeight: "100vh", background: T.bg, color: T.ink, fontFamily: F.body, display: "flex", justifyContent: "center", padding: mobile ? "12px 10px 70px" : "20px 16px 80px", transition: "background .5s ease,color .5s ease" },
     shell: { width: "100%", maxWidth: 720 },
-    eyebrow: { fontFamily: F.mono, fontSize: 10.5, letterSpacing: "0.2em", textTransform: "uppercase", color: T.dim, display: "flex", alignItems: "center", gap: 6 },
-    h1: { fontFamily: F.display, fontSize: Math.max((F.h1 || 26) - (mobile ? 3 : 0), 13), fontWeight: 700, margin: "8px 0 4px", letterSpacing: "-0.01em", lineHeight: 1.35 },
-    panel: { background: T.panel, border: `${blocky ? 2 : 1}px solid ${T.edge}`, borderRadius: R.panel, padding: mobile ? 16 : 24, marginTop: mobile ? 12 : 16, boxShadow: blockShadow || T.shadow, transition: "background .5s ease,border .5s ease" },
-    h1Tight: { letterSpacing: "-0.02em" },
-    btn: (primary, grad) => ({ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: mobile ? "12px 16px" : "13px 22px", borderRadius: R.btn, border: primary ? "none" : `1.5px solid ${air ? T.ink : T.edge}`, background: primary ? (grad || T.accent) : "transparent", color: primary ? T.onAccent : T.ink, fontFamily: F.body, fontWeight: 700, fontSize: 15, cursor: "pointer", boxShadow: primary ? (blocky ? `3px 3px 0 ${T.edge}` : air ? "none" : `0 6px 18px ${T.accent}44`) : "none" }),
-    chip: (active) => ({ padding: "12px 15px", borderRadius: R.chip, border: `1.5px solid ${active ? T.accent : T.edge}`, background: active ? T.accentSoft : T.slot, color: active ? T.accent : T.ink, fontFamily: F.body, fontWeight: 600, fontSize: 14, cursor: "pointer", textAlign: "left", lineHeight: 1.5, transition: "border .15s ease, transform .1s ease" }),
-    feedback: { marginTop: 14, padding: "13px 15px", borderRadius: 13, background: T.goldSoft, border: `1.5px solid ${T.gold}66`, color: T.gold, fontSize: 14, fontWeight: 600, lineHeight: 1.55 },
-    good: { marginTop: 14, padding: "13px 15px", borderRadius: 13, background: T.tealSoft, border: `1.5px solid ${T.teal}66`, color: T.teal, fontSize: 14, fontWeight: 600, lineHeight: 1.55 },
+    h1: { fontFamily: F.display, fontSize: Math.max((F.h1 || 24) - (mobile ? 3 : 0), 13), fontWeight: 800, margin: "8px 0 4px", letterSpacing: "-0.015em", lineHeight: 1.35 },
+    eyebrow: { fontFamily: st.monoEyebrow ? F.mono : F.body, fontSize: 11, letterSpacing: st.monoEyebrow ? "0.14em" : "0.03em", textTransform: st.monoEyebrow ? "uppercase" : "none", color: T.dim, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 },
+    panel: { background: T.panel, border: st.border ? `${st.border}px solid ${T.edge}` : "none", borderRadius: R.panel, padding: mobile ? 16 : 22, marginTop: mobile ? 12 : 16, boxShadow: T.shadow === "none" ? undefined : T.shadow, transition: "background .5s ease,border .5s ease" },
+    btn: (primary, grad) => ({
+      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+      padding: mobile ? "12px 18px" : "13px 24px", borderRadius: R.btn,
+      border: primary ? "none" : `${Math.max(st.border, 1)}px solid ${T.edgeStrong}`,
+      borderBottom: st.btn3d ? `4px solid ${primary ? T.accentDark : T.edgeStrong}` : undefined,
+      background: primary ? (grad || T.accent) : T.panel,
+      color: primary ? T.onAccent : T.ink,
+      fontFamily: F.body, fontWeight: 800, fontSize: 14.5,
+      textTransform: st.btn3d && primary ? "uppercase" : "none",
+      letterSpacing: st.btn3d && primary ? "0.04em" : 0,
+      cursor: "pointer",
+    }),
+    chip: (active) => ({ padding: "12px 15px", borderRadius: R.chip, border: `${Math.max(st.border, 1)}px solid ${active ? T.accent : T.edgeStrong}`, background: active ? T.accentSoft : T.panel, color: active ? T.accent : T.ink, fontFamily: F.body, fontWeight: 800, fontSize: 14, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }),
     storyBox: { fontFamily: F.body, fontSize: mobile ? 15 : 16.5, fontWeight: 500, lineHeight: 1.85, background: T.slot, padding: mobile ? 13 : 18, borderRadius: R.box, border: `1px solid ${T.edgeSoft}` },
+    feedback: { marginTop: 12, padding: "12px 15px", borderRadius: R.box, border: `1px solid ${T.gold}55`, background: T.goldSoft, color: T.gold, fontSize: 13.5, fontWeight: 700, lineHeight: 1.55 },
+    good: { marginTop: 12, padding: "12px 15px", borderRadius: R.box, border: `1px solid ${T.teal}55`, background: T.tealSoft, color: T.teal, fontSize: 13.5, fontWeight: 700, lineHeight: 1.55 },
   };
 }
+
 const UICtx = createContext(null);
 const useUI = () => useContext(UICtx);
 
@@ -745,6 +781,7 @@ function ConceptVisual({ viz, showAnswer = false }) {
   return null;
 }
 
+
 /* ── WORD HELP: tap any word for a simple meaning ───────────── */
 /* Language help is ALWAYS free and unlimited. It never counts
    as math help — English must never be the barrier. */
@@ -785,7 +822,7 @@ function StoryText({ text, glossary = {} }) {
           const inGloss = !!gl[clean];
           return (
             <span key={i} onClick={() => lookup(p)}
-              style={{ cursor: "pointer", borderBottom: inGloss ? `2px dotted ${T.violet}` : "none", borderRadius: 2 }}
+              style={{ cursor: "pointer", borderBottom: inGloss ? `2px dotted ${T.accent}` : "none", borderRadius: 2 }}
               title={inGloss ? "tap for meaning" : "tap any word to learn it"}>
               {p}
             </span>
@@ -798,10 +835,10 @@ function StoryText({ text, glossary = {} }) {
         </span>
       </div>
       {popup && (
-        <div className="pd-pop" style={{ marginTop: 8, padding: "11px 14px", borderRadius: 12, border: `1.5px solid ${T.violet}66`, background: T.violetSoft, display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <div className="pd-pop" style={{ marginTop: 8, padding: "11px 14px", borderRadius: 12, border: `1px solid ${T.edgeStrong}`, background: T.slot, display: "flex", gap: 8, alignItems: "flex-start" }}>
           <span style={{ fontSize: 15 }}>📖</span>
           <div style={{ fontSize: 13.5, lineHeight: 1.55 }}>
-            <strong style={{ color: T.violet }}>{popup.word}</strong>{" — "}
+            <strong style={{ color: T.accent }}>{popup.word}</strong>{" — "}
             {popup.loading ? <span style={{ color: T.dim }}>loading…</span> : <span>{popup.meaning}</span>}
           </div>
           <button onClick={() => setPopup(null)} style={{ marginLeft: "auto", background: "none", border: "none", color: T.dim, cursor: "pointer", fontWeight: 700 }}>✕</button>
@@ -834,7 +871,7 @@ function SimplifyButton({ text }) {
         {busy ? <><Loader2 size={14} className="pd-spin" /> Making it simpler…</> : simple ? "Hide simple version" : "🪄 Say it more simply"}
       </button>
       {simple && (
-        <div className="pd-pop" style={{ marginTop: 8, padding: "12px 15px", borderRadius: 12, border: `1.5px solid ${T.teal}55`, background: T.tealSoft, fontSize: 14.5, fontWeight: 600, lineHeight: 1.75 }}>
+        <div className="pd-pop" style={{ marginTop: 8, padding: "12px 15px", borderRadius: 12, border: `1px solid ${T.edgeStrong}`, background: T.slot, fontSize: 14.5, fontWeight: 600, lineHeight: 1.75 }}>
           {simple}
         </div>
       )}
@@ -898,7 +935,7 @@ function QuoteBanner() {
 }
 function Confetti() {
   const { T } = useUI();
-  const colors = [T.accent, T.gold, T.teal, T.violet];
+  const colors = [T.accent, T.accentDark, T.gold, T.teal];
   const bits = useMemo(() => Array.from({ length: 26 }, (_, i) => ({
     left: Math.random() * 100, delay: Math.random() * 0.5, dur: 1.6 + Math.random() * 1.2,
     color: colors[i % colors.length], size: 6 + Math.random() * 6, rot: Math.random() * 360,
@@ -951,13 +988,13 @@ They have retried ${attempt.retries} time(s). Rules: max 2-3 SHORT sentences in 
     <div style={{ marginTop: 16 }}>
       {!open ? (
         <button style={{ ...S.btn(false), width: "100%", justifyContent: "center", borderStyle: "dashed" }} onClick={() => setOpen(true)}>
-          <Bot size={17} color={T.violet} /> Ask {V.sidekick.name} — 2 math tips per case (word help is always free)
+          <Bot size={17} color={T.accent} /> Ask {V.sidekick.name} — 2 math tips per case (word help is always free)
         </button>
       ) : (
-        <div style={{ border: `1.5px solid ${T.violet}55`, borderRadius: 16, background: T.violetSoft, padding: 14 }}>
+        <div style={{ border: `1px solid ${T.edgeStrong}`, borderRadius: 16, background: T.slot, padding: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <Bot size={16} color={T.violet} />
-            <span style={{ fontFamily: F.display, fontWeight: 700, fontSize: 14, color: T.violet }}>{V.sidekick.name}</span>
+            <Bot size={16} color={T.accent} />
+            <span style={{ fontFamily: F.display, fontWeight: 700, fontSize: 14, color: T.accent }}>{V.sidekick.name}</span>
             <span style={{ fontSize: 11.5, color: T.dim, fontWeight: 600 }}>· {2 - Math.min(userAsks, 2)} lead{userAsks === 1 ? "" : "s"} left this case</span>
           </div>
           <div style={{ maxHeight: compact ? 170 : 230, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 4 }}>
@@ -1010,12 +1047,12 @@ function CaseForge({ maxTier, onQuest }) {
     finally { setBusy(false); }
   };
   return (
-    <div style={{ ...S.panel, border: `1.5px solid ${T.violet}66`, background: T.violetSoft }}>
-      <div style={{ ...S.eyebrow, color: T.violet }}><Wand2 size={13} /> case forge · your world, your problem</div>
+    <div style={S.panel}>
+      <div style={S.eyebrow}><Wand2 size={13} /> case forge · your world, your problem</div>
       <h1 style={{ ...S.h1, fontSize: Math.min(F.h1 || 26, 19) }}>Name any topic. Get a case written just for you.</h1>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "10px 0" }}>
         {V.forgeIdeas.map((s) => (
-          <button key={s} onClick={() => setTheme(s)} style={{ padding: "6px 12px", borderRadius: 999, border: `1px solid ${T.edge}`, background: theme === s ? T.violetSoft : "transparent", color: theme === s ? T.violet : T.dim, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{s}</button>
+          <button key={s} onClick={() => setTheme(s)} style={{ padding: "6px 12px", borderRadius: 999, border: `1px solid ${T.edge}`, background: theme === s ? T.accentSoft : "transparent", color: theme === s ? T.accent : T.dim, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{s}</button>
         ))}
       </div>
       <input value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="anything — 'my dog', 'F1 racing', 'street food'…"
@@ -1025,12 +1062,12 @@ function CaseForge({ maxTier, onQuest }) {
           {TIER_NAMES.map((t, i) => (
             <button key={t} disabled={i > maxTier} onClick={() => setTier(i)}
               title={i > maxTier ? "Opens as your confidence grows" : t}
-              style={{ padding: "10px 13px", borderRadius: 10, border: `1.5px solid ${tier === i ? T.violet : T.edge}`, background: tier === i ? T.violetSoft : "transparent", color: i > maxTier ? T.dim : tier === i ? T.violet : T.ink, fontFamily: F.body, fontWeight: 800, fontSize: 12.5, cursor: i > maxTier ? "default" : "pointer", opacity: i > maxTier ? 0.4 : 1, display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+              style={{ padding: "10px 13px", borderRadius: 10, border: `1.5px solid ${tier === i ? T.accent : T.edgeStrong}`, background: tier === i ? T.accentSoft : "transparent", color: i > maxTier ? T.dim : tier === i ? T.accent : T.ink, fontFamily: F.body, fontWeight: 800, fontSize: 12.5, cursor: i > maxTier ? "default" : "pointer", opacity: i > maxTier ? 0.4 : 1, display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
               {i > maxTier && <Lock size={11} />}{t}
             </button>
           ))}
         </div>
-        <button style={{ ...S.btn(true, T.violet), flexShrink: 0 }} disabled={busy || !theme.trim()} onClick={forge}>
+        <button style={{ ...S.btn(true), flexShrink: 0 }} disabled={busy || !theme.trim()} onClick={forge}>
           {busy ? <><Loader2 size={16} className="pd-spin" /> Writing…</> : <><Wand2 size={16} /> Forge it</>}
         </button>
       </div>
@@ -1083,8 +1120,8 @@ function MyQuestion({ voice, onQuest }) {
     } finally { setBusy(false); }
   };
   return (
-    <div style={{ ...S.panel, border: `1.5px solid ${T.teal}66` }}>
-      <div style={{ ...S.eyebrow, color: T.teal }}>📝 my own question · from homework, a book, anywhere</div>
+    <div style={S.panel}>
+      <div style={S.eyebrow}>📝 my own question · from homework, a book, anywhere</div>
       <h1 style={{ ...S.h1, fontSize: Math.min((F.h1 || 26), 19) }}>Type your question. Solve it here — with all your tools.</h1>
       <p style={{ color: T.dim, fontSize: 13.5, fontWeight: 600, marginTop: 2 }}>
         Word help, pictures and your sidekick work on YOUR questions too. Same rules: 2 math tips, word help always free.
@@ -1093,7 +1130,7 @@ function MyQuestion({ voice, onQuest }) {
         placeholder="Example: A shop sells a bag for 450 rupees. Ravi pays with a 500 note. How much change does he get?"
         style={{ width: "100%", boxSizing: "border-box", marginTop: 8, padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${T.edge}`, background: T.slot, color: T.ink, fontFamily: F.body, fontSize: 14, fontWeight: 600, lineHeight: 1.6, outline: "none", resize: "vertical" }} />
       <div style={{ marginTop: 10 }}>
-        <button style={S.btn(true, T.teal)} disabled={busy || text.trim().length < 15} onClick={go}>
+        <button style={S.btn(true)} disabled={busy || text.trim().length < 15} onClick={go}>
           {busy ? <><Loader2 size={16} className="pd-spin" /> Setting it up…</> : <>Set it up for me <ChevronRight size={16} /></>}
         </button>
       </div>
@@ -1121,8 +1158,8 @@ function CoachRead({ history, maxCombo }) {
     finally { setBusy(false); }
   };
   return (
-    <div style={{ ...S.panel, border: `1.5px solid ${T.teal}55` }}>
-      <div style={{ ...S.eyebrow, color: T.teal }}><Bot size={13} /> {V.sidekick.name}'s read · personalized</div>
+    <div style={S.panel}>
+      <div style={S.eyebrow}><Bot size={13} /> {V.sidekick.name}'s read · personalized</div>
       {note ? <p style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.7, margin: "10px 0 12px" }}>{note}</p>
         : <p style={{ color: T.dim, fontSize: 14, fontWeight: 500, margin: "10px 0 12px" }}>{V.sidekick.name} looks at HOW you solve — not just how many — and tells you your next best challenge.</p>}
       <button style={S.btn(false)} disabled={busy || history.length === 0} onClick={getRead}>
@@ -1204,14 +1241,14 @@ function TierPicker({ conf, value, onChange }) {
   );
 }
 
-function CaseBoard({ energy, dailyDone, dailyQuest, history, bossReady, onPick, onBoss, voice, quizDone, gameDone, onQuiz, onGame, topicStars, onSelfTest }) {
+function CaseBoard({ energy, dailyDone, dailyQuest, history, bossReady, onPick, onBoss, voice, quizDone, gameDone, onQuiz, onGame, topicStars, onSelfTest, storyProgress, formulaDone, onFormula, storyItems, onStoryItem, storyOutro }) {
   const { T, S, F, V, mobile } = useUI();
   const [section, setSection] = useState("today");
   const [openKey, setOpenKey] = useState(null);
   const [createMode, setCreateMode] = useState("mine");
   const [tiers, setTiers] = useState(() => Object.fromEntries(Object.keys(CONCEPTS).map((k) => [k, 0])));
   const globalMaxTier = Math.max(...Object.keys(CONCEPTS).map((k) => unlockedTier(conceptConfidence(history, k))));
-  const todayLeft = (dailyDone ? 0 : 1) + (quizDone ? 0 : 1) + (gameDone ? 0 : 1) + (bossReady ? 1 : 0);
+  const todayLeft = (dailyDone ? 0 : 1) + (quizDone ? 0 : 1) + (gameDone ? 0 : 1) + (formulaDone ? 0 : 1) + (bossReady ? 1 : 0);
 
   const seg = (id, emoji, label, count) => (
     <button onClick={() => setSection(id)}
@@ -1227,6 +1264,7 @@ function CaseBoard({ energy, dailyDone, dailyQuest, history, bossReady, onPick, 
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         {seg("today", "☀️", "Today", todayLeft)}
         {seg("missions", "🎯", "Missions", 0)}
+        {seg("story", "📖", "Story", 0)}
         {seg("create", "✍️", "Create", 0)}
       </div>
 
@@ -1234,8 +1272,8 @@ function CaseBoard({ energy, dailyDone, dailyQuest, history, bossReady, onPick, 
       {section === "today" && (
         <>
           {bossReady && (
-            <div className="pd-pop" style={{ ...S.panel, border: `1.5px solid ${T.accent}88`, background: T.accentSoft }}>
-              <div style={{ ...S.eyebrow, color: T.accent }}><Swords size={13} /> {voice === "arcade" ? "!! BOSS STAGE UNLOCKED !!" : "big challenge unlocked"}</div>
+            <div className="pd-pop" style={S.panel}>
+              <div style={S.eyebrow}><Swords size={13} /> {voice === "arcade" ? "!! BOSS STAGE UNLOCKED !!" : "big challenge unlocked"}</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, flexWrap: "wrap", gap: 10 }}>
                 <div>
                   <strong style={{ fontFamily: F.display, fontSize: 16 }}>{voice === "arcade" ? "A giant boss blocks the next stage." : "A bigger real-world problem. You're ready."}</strong>
@@ -1246,14 +1284,14 @@ function CaseBoard({ energy, dailyDone, dailyQuest, history, bossReady, onPick, 
             </div>
           )}
 
-          <div style={{ ...S.panel, border: `1.5px solid ${dailyDone ? T.edge : T.violet + "77"}`, background: dailyDone ? T.panel : T.violetSoft }}>
-            <div style={{ ...S.eyebrow, color: T.violet }}><Radio size={13} /> {V.ui.dailyLabel} · {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}</div>
+          <div style={S.panel}>
+            <div style={S.eyebrow}><Radio size={13} /> {V.ui.dailyLabel} · {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, flexWrap: "wrap", gap: 10 }}>
               <div>
                 <strong style={{ fontFamily: F.display, fontSize: 16 }}>{dailyQuest.title}</strong>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: T.dim, marginTop: 3 }}>{CONCEPTS[dailyQuest.concept].label} · one per day · <span style={{ color: T.gold }}>2× XP (+{dailyQuest.xp})</span></div>
               </div>
-              <button style={S.btn(!dailyDone, T.violet)} disabled={dailyDone} onClick={() => onPick(dailyQuest)}>
+              <button style={S.btn(!dailyDone)} disabled={dailyDone} onClick={() => onPick(dailyQuest)}>
                 {dailyDone ? <><Check size={15} /> Done today</> : V.ui.start}
               </button>
             </div>
@@ -1261,6 +1299,7 @@ function CaseBoard({ energy, dailyDone, dailyQuest, history, bossReady, onPick, 
 
           <DailyQuiz done={quizDone} onFinish={onQuiz} />
           <DailyGame done={gameDone} onFinish={onGame} />
+          <FormulaRush done={formulaDone} onFinish={onFormula} />
           {todayLeft === 0 && (
             <div style={{ ...S.panel, textAlign: "center" }}>
               <div style={{ fontSize: 28 }}>🌟</div>
@@ -1324,13 +1363,16 @@ function CaseBoard({ energy, dailyDone, dailyQuest, history, bossReady, onPick, 
         </div>
       )}
 
+      {/* ── STORY: the season campaign ── */}
+      {section === "story" && <StorySection storyProgress={storyProgress} voice={voice} onPick={onPick} storyItems={storyItems} onItem={onStoryItem} lastOutro={storyOutro} />}
+
       {/* ── CREATE: your question, or a theme — one at a time ── */}
       {section === "create" && (
         <>
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             {[["mine", "📝 My own question"], ["theme", "✨ From a theme"]].map(([id, label]) => (
               <button key={id} onClick={() => setCreateMode(id)}
-                style={{ flex: 1, padding: "10px 8px", borderRadius: 11, cursor: "pointer", border: `2px solid ${createMode === id ? T.teal : T.edge}`, background: createMode === id ? T.tealSoft : T.slot, color: createMode === id ? T.teal : T.dim, fontWeight: 800, fontSize: mobile ? 12 : 13 }}>
+                style={{ flex: 1, padding: "10px 8px", borderRadius: 11, cursor: "pointer", border: `2px solid ${createMode === id ? T.accent : T.edgeStrong}`, background: createMode === id ? T.accentSoft : T.panel, color: createMode === id ? T.accent : T.dim, fontWeight: 800, fontSize: mobile ? 12 : 13 }}>
                 {label}
               </button>
             ))}
@@ -1511,8 +1553,8 @@ function Complete({ quest, result, onHome, onShare }) {
         </div>
       )}
 
-      <div style={{ marginTop: 18, padding: 17, borderRadius: 16, border: `1px solid ${T.edgeSoft}`, background: T.violetSoft }}>
-        <div style={{ ...S.eyebrow, color: T.violet }}><Lightbulb size={12} /> where this exact math works in real life</div>
+      <div style={{ marginTop: 18, padding: 17, borderRadius: 16, border: `1px solid ${T.edgeSoft}`, background: T.slot }}>
+        <div style={S.eyebrow}><Lightbulb size={12} /> where this exact math works in real life</div>
         <div style={{ fontWeight: 700, margin: "8px 0 6px", fontSize: 15 }}>{c.fieldNote.headline}</div>
         <div style={{ color: T.dim, fontSize: 14, fontWeight: 500, lineHeight: 1.7 }}>{c.fieldNote.examples.join("  ·  ")}</div>
       </div>
@@ -1527,7 +1569,7 @@ function Complete({ quest, result, onHome, onShare }) {
 
       <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 22, flexWrap: "wrap" }}>
         <button style={S.btn(true)} onClick={onHome}>Next one <ChevronRight size={16} /></button>
-        {newBadges.length > 0 && <button style={S.btn(false)} onClick={onShare}><Share2 size={15} color={T.violet} /> Share this badge</button>}
+        {newBadges.length > 0 && <button style={S.btn(false)} onClick={onShare}><Share2 size={15} color={T.accent} /> Share this badge</button>}
       </div>
     </div>
   );
@@ -1642,7 +1684,7 @@ function SelfTest({ concept, voice, onDone, onBack }) {
       {feedback && <div style={S.feedback}>{feedback}</div>}
       <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
         {[0, 1, 2].map((i) => (
-          <div key={i} style={{ flex: 1, height: 6, borderRadius: 4, background: i < idx ? T.teal : i === idx ? T.gold : T.slot, border: `1px solid ${T.edgeSoft}` }} />
+          <div key={i} style={{ flex: 1, height: 6, borderRadius: 4, background: i < idx ? T.teal : i === idx ? T.accent : T.slot, border: `1px solid ${T.edgeSoft}` }} />
         ))}
       </div>
     </div>
@@ -1688,18 +1730,18 @@ function DailyQuiz({ done, onFinish }) {
   };
 
   return (
-    <div style={{ ...S.panel, border: `1.5px solid ${done ? T.edge : T.teal}` }}>
-      <div style={{ ...S.eyebrow, color: T.teal }}><HelpCircle size={13} color={T.teal} /> daily quiz · 5 quick questions · trains the basics</div>
+    <div style={S.panel}>
+      <div style={S.eyebrow}><HelpCircle size={13} /> daily quiz · 5 quick questions · trains the basics</div>
       {!open && !done && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, flexWrap: "wrap", gap: 10 }}>
           <div>
             <strong style={{ fontFamily: F.display, fontSize: 16 }}>🧠 Fast Five</strong>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: T.dim, marginTop: 2 }}>Times tables, adding, percent — the muscles behind every problem. Up to +75 XP.</div>
           </div>
-          <button style={S.btn(true, T.teal)} onClick={() => setOpen(true)}>Start quiz</button>
+          <button style={S.btn(true)} onClick={() => setOpen(true)}>Start quiz</button>
         </div>
       )}
-      {done && !open && <div style={{ marginTop: 8, fontWeight: 700, color: T.teal, fontSize: 14 }}>✅ Done for today — come back tomorrow!</div>}
+      {done && !open && <div style={{ marginTop: 8, fontWeight: 700, color: T.dim, fontSize: 14 }}>✅ Done for today — come back tomorrow!</div>}
       {open && !over && (
         <div className="pd-pop" style={{ marginTop: 12 }}>
           <div style={{ fontFamily: F.mono, fontSize: 12, color: T.dim, marginBottom: 8 }}>question {idx + 1} / 5 · score {score}</div>
@@ -1764,18 +1806,18 @@ function DailyGame({ done, onFinish }) {
     }, 700);
   };
   return (
-    <div style={{ ...S.panel, border: `1.5px solid ${done ? T.edge : T.gold}` }}>
-      <div style={{ ...S.eyebrow, color: T.gold }}><Gamepad2 size={13} color={T.gold} /> daily game · no timer, no stress</div>
+    <div style={S.panel}>
+      <div style={S.eyebrow}><Gamepad2 size={13} /> daily game · no timer, no stress</div>
       {!open && !done && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, flexWrap: "wrap", gap: 10 }}>
           <div>
             <strong style={{ fontFamily: F.display, fontSize: 16 }}>🎯 Operator Hunt</strong>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: T.dim, marginTop: 2 }}>Which sign makes the number true? 6 rounds. Up to +60 XP.</div>
           </div>
-          <button style={S.btn(true, T.gold)} onClick={() => setOpen(true)}>Play</button>
+          <button style={S.btn(true)} onClick={() => setOpen(true)}>Play</button>
         </div>
       )}
-      {done && !open && <div style={{ marginTop: 8, fontWeight: 700, color: T.gold, fontSize: 14 }}>✅ Played today — new puzzle tomorrow!</div>}
+      {done && !open && <div style={{ marginTop: 8, fontWeight: 700, color: T.dim, fontSize: 14 }}>✅ Played today — new puzzle tomorrow!</div>}
       {open && !over && (
         <div className="pd-pop" style={{ marginTop: 12, textAlign: "center" }}>
           <div style={{ fontFamily: F.mono, fontSize: 12, color: T.dim, marginBottom: 8 }}>round {idx + 1} / 6 · score {score}</div>
@@ -1802,6 +1844,282 @@ function DailyGame({ done, onFinish }) {
         <div className="pd-pop" style={{ marginTop: 12, textAlign: "center" }}>
           <div style={{ fontSize: 32 }}>{score === 6 ? "🏆" : score >= 4 ? "🎯" : "🌱"}</div>
           <div style={{ fontFamily: F.display, fontWeight: 700, fontSize: 18 }}>{score} / 6 · +{score * 10} XP</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ── STORY MODE v2 — interactive:
+   · dialogue you tap through, like a game cutscene
+   · a CHOICE in each chapter that changes the story and your item
+   · items you collect chapter by chapter
+   · your real answer gets written INTO the story afterward        */
+const STORY_SEASON = {
+  id: "s1", title: "The Field Trip Mystery",
+  chapters: [
+    {
+      title: "The Bus Leaves",
+      dialogue: [
+        { who: "🧕 Meena", text: "You're late! The bus is about to go!" },
+        { who: "🧑‍✈️ Driver", text: "Last stop before the highway. Snacks now or never." },
+        { who: "you", text: "Okay okay — let me count my money…" },
+      ],
+      choice: { prompt: "What do you buy for the road?", options: [
+        { label: "🥪 Sandwiches for everyone", item: "🥪", react: "Meena grins: 'Hero move. Everyone remembers the sandwich person.'" },
+        { label: "🧃 Cold juice boxes", item: "🧃", react: "The driver nods: 'Smart. It gets hot on the highway.'" },
+      ]},
+      concept: "takeaway", tier: 0,
+      outro: (a) => `You counted it perfectly — ${a} exactly. Meena high-fives you as the bus rolls out.`,
+    },
+    {
+      title: "The Ticket Line",
+      dialogue: [
+        { who: "🧕 Meena", text: "Whoa. Look at that line for tickets." },
+        { who: "🎫 Gate person", text: "Group entry: one base price, plus a cost for each student." },
+        { who: "you", text: "So the total depends on how many we are… I can work this out." },
+      ],
+      choice: { prompt: "While you wait, you…", options: [
+        { label: "🗺️ Grab a park map", item: "🗺️", react: "The map shows a shortcut to the science dome. Could be useful later…" },
+        { label: "📸 Take a group photo", item: "📸", react: "'Best trip ever' — click. Even the driver photobombed." },
+      ]},
+      concept: "ratebuild", tier: 1,
+      outro: (a) => `${a} — the gate person checks it twice and waves your whole group in. First try.`,
+    },
+    {
+      title: "Lunch for Everyone",
+      dialogue: [
+        { who: "🧑‍🍳 Canteen uncle", text: "One big order is cheaper. But YOU split it fairly." },
+        { who: "🧕 Meena", text: "Last time someone did this wrong, there was… drama." },
+        { who: "you", text: "No drama today. Fair means equal. Watch me." },
+      ],
+      choice: { prompt: "Where does the group sit?", options: [
+        { label: "🌳 Under the big tree", item: "🌳", react: "Shade, breeze, and someone starts a song. Perfect." },
+        { label: "⛲ By the fountain", item: "⛲", react: "Mist from the fountain on a hot day. Genius choice." },
+      ]},
+      concept: "fairsplit", tier: 1,
+      outro: (a) => `Everyone gets exactly ${a}. Zero drama. The canteen uncle looks genuinely impressed.`,
+    },
+    {
+      title: "The Race Back",
+      dialogue: [
+        { who: "📢 Announcement", text: "The park closes in a short while. All groups return to the gate." },
+        { who: "🧕 Meena", text: "We're at the FAR end! How fast do we need to walk?!" },
+        { who: "you", text: "Don't panic. Speed is just distance and time. Give me a second." },
+      ],
+      choice: { prompt: "Which way back?", options: [
+        { label: "⚡ The shortcut path", item: "⚡", react: "Narrow, a little muddy — but fast. Meena trusts your math." },
+        { label: "🛤️ The main road", item: "🛤️", react: "Longer but sure. Steady pace, no surprises. Your call, your plan." },
+      ]},
+      concept: "speed", tier: 2,
+      outro: (a) => `${a} — you did the math, set the pace, and your group walks in with time to spare.`,
+    },
+    {
+      title: "The Locked Gate Code",
+      dialogue: [
+        { who: "💂 Guard", text: "Side gate's locked. The code… is the answer to one last question." },
+        { who: "🧕 Meena", text: "Of course it is. Good thing we brought a math detective." },
+        { who: "you", text: "Everything today was practice for this. Let's finish it." },
+      ],
+      choice: { prompt: "Before the finale, you take a breath and…", options: [
+        { label: "🧠 Picture every problem you solved today", item: "🧠", react: "Snacks. Tickets. Lunch. The race. You've been training all day without noticing." },
+        { label: "🤝 Fist-bump Meena", item: "🤝", react: "'You've got this,' she says. And honestly? You do." },
+      ]},
+      concept: "percent", tier: 2, boss: true,
+      outro: (a) => `You press ${a} into the keypad. CLICK. The gate swings open and your whole group cheers your name.`,
+    },
+  ],
+};
+
+function StorySection({ storyProgress, voice, onPick, storyItems, onItem, lastOutro }) {
+  const { T, S, F, mobile } = useUI();
+  const chapters = STORY_SEASON.chapters;
+  const done = storyProgress >= chapters.length;
+  const current = chapters[Math.min(storyProgress, chapters.length - 1)];
+  const [line, setLine] = useState(0);            // dialogue reveal progress
+  const [picked, setPicked] = useState(null);     // chosen option this chapter
+  const chapterKey = storyProgress;               // reset local state per chapter
+  useEffect(() => { setLine(0); setPicked(null); }, [chapterKey]);
+
+  const allLinesShown = line >= current.dialogue.length;
+  const startChapter = () => {
+    const i = storyProgress;
+    const ch = chapters[i];
+    const q = generateQuest(ch.concept, mulberry32(hashStr(`${STORY_SEASON.id}-${i}-${Date.now()}`)), { tier: ch.tier, boss: !!ch.boss, voice });
+    q.storyChapter = i;
+    q.title = `📖 Ch.${i + 1}: ${ch.title}`;
+    onPick(q);
+  };
+
+  return (
+    <div style={S.panel}>
+      <div style={S.eyebrow}>📖 story mode · {STORY_SEASON.title} · chapter {Math.min(storyProgress + 1, chapters.length)} of {chapters.length}</div>
+
+      {/* chapter path + collected items */}
+      <div style={{ display: "flex", gap: 6, margin: "12px 0 8px" }}>
+        {chapters.map((c, i) => (
+          <div key={i} title={c.title} style={{ flex: 1, height: 7, borderRadius: 4, background: i < storyProgress ? T.teal : i === storyProgress ? T.accent : T.slot, border: `1px solid ${i <= storyProgress ? "transparent" : T.edge}` }} />
+        ))}
+      </div>
+      {storyItems.length > 0 && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: T.dim, letterSpacing: "0.06em" }}>YOUR TRIP SO FAR:</span>
+          {storyItems.map((it, i) => (
+            <span key={i} style={{ fontSize: 17, background: T.slot, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "3px 7px" }}>{it}</span>
+          ))}
+        </div>
+      )}
+
+      {/* recap of what YOUR answer did */}
+      {lastOutro && !done && (
+        <p style={{ fontSize: 13, fontWeight: 600, color: T.teal, background: T.tealSoft, border: `1px solid ${T.teal}44`, borderRadius: 10, padding: "10px 13px", margin: "0 0 12px" }}>
+          Previously: {lastOutro}
+        </p>
+      )}
+
+      {done ? (
+        <div style={{ textAlign: "center", padding: "6px 0" }}>
+          <div style={{ fontSize: 34 }}>🏆</div>
+          <div style={{ fontFamily: F.display, fontWeight: 700, fontSize: 17 }}>Season complete!</div>
+          {lastOutro && <p style={{ fontSize: 13.5, fontWeight: 600, color: T.teal, marginTop: 6 }}>{lastOutro}</p>}
+          <p style={{ color: T.dim, fontSize: 13.5, fontWeight: 600, marginTop: 4 }}>You solved the whole mystery — with {storyItems.length} memories collected. A new season is coming.</p>
+        </div>
+      ) : (
+        <>
+          <div style={{ fontFamily: F.display, fontWeight: 700, fontSize: mobile ? 16 : 18, marginBottom: 10 }}>{current.boss ? "⚔️ " : ""}Chapter {storyProgress + 1}: {current.title}</div>
+
+          {/* tap-through dialogue, like a game cutscene */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {current.dialogue.slice(0, Math.max(line, 1)).map((d, i) => {
+              const me = d.who === "you";
+              return (
+                <div key={i} className="pd-pop" style={{ alignSelf: me ? "flex-end" : "flex-start", maxWidth: "85%", background: me ? T.accentSoft : T.slot, border: `1px solid ${me ? T.accent + "55" : T.edge}`, borderRadius: 12, padding: "9px 13px" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: me ? T.accent : T.dim, marginBottom: 2 }}>{me ? "YOU" : d.who}</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.55 }}>{d.text}</div>
+                </div>
+              );
+            })}
+          </div>
+          {!allLinesShown && (
+            <button onClick={() => setLine((l) => l + 1)} style={{ ...S.btn(false), marginTop: 12, width: "100%", justifyContent: "center" }}>
+              Continue ▸
+            </button>
+          )}
+
+          {/* the chapter choice */}
+          {allLinesShown && picked === null && (
+            <div className="pd-pop" style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: T.ink, marginBottom: 8 }}>{current.choice.prompt}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {current.choice.options.map((o, i) => (
+                  <button key={i} onClick={() => { setPicked(i); onItem(o.item); }}
+                    style={{ flex: 1, minWidth: 150, padding: "13px 14px", borderRadius: 12, border: `1.5px solid ${T.edge}`, background: T.panel, color: T.ink, fontWeight: 700, fontSize: 13.5, cursor: "pointer", textAlign: "left" }}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {picked !== null && (
+            <div className="pd-pop" style={{ marginTop: 12 }}>
+              <p style={{ fontSize: 13.5, fontWeight: 600, fontStyle: "italic", color: T.dim, margin: "0 0 12px" }}>{current.choice.options[picked].react}</p>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: T.dim }}>
+                  {CONCEPT_ICONS[current.concept]} {CONCEPTS[current.concept].label} · {TIER_NAMES[current.tier]}
+                  {current.boss && <span style={{ color: T.gold }}> · finale — 3× XP</span>}
+                </span>
+                <button style={S.btn(true)} onClick={startChapter}>{current.boss ? "Face the finale" : "Solve this chapter"} <ChevronRight size={15} /></button>
+              </div>
+            </div>
+          )}
+          <p style={{ fontSize: 11.5, fontWeight: 600, color: T.dim, marginTop: 12, marginBottom: 0 }}>Finish all {chapters.length} chapters for +150 bonus XP and the Storyteller badge.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── FORMULA RUSH: daily points game — complete the formula ──── */
+const FORMULA_ROUNDS = [
+  { q: "speed = ? ÷ time", opts: ["distance", "weight", "price"], a: 0 },
+  { q: "distance = speed × ?", opts: ["time", "area", "money"], a: 0 },
+  { q: "area of rectangle = length × ?", opts: ["width", "height of you", "time"], a: 0 },
+  { q: "part = (percent × whole) ÷ ?", opts: ["100", "10", "2"], a: 0 },
+  { q: "average = total ÷ ?", opts: ["how many", "100", "the biggest"], a: 0 },
+  { q: "interest = (P × R × T) ÷ ?", opts: ["100", "12", "365"], a: 0 },
+  { q: "steps = (start − end) ÷ ?", opts: ["drop each step", "start", "100"], a: 0 },
+  { q: "total cost = start cost + rate × ?", opts: ["how many", "percent", "area"], a: 0 },
+  { q: "c² = a² + ?  (right triangle)", opts: ["b²", "b", "2b"], a: 0 },
+  { q: "change = money you give − ?", opts: ["the price", "your savings", "100"], a: 0 },
+  { q: "total = amount each × ?", opts: ["how many", "percent", "time"], a: 0 },
+  { q: "what is left = start − ?", opts: ["what you used", "what you want", "100"], a: 0 },
+];
+function makeFormulaRush(rng) {
+  const shuffled = FORMULA_ROUNDS.map((r) => ({ r, k: rng() })).sort((x, y) => x.k - y.k).slice(0, 8);
+  return shuffled.map(({ r }) => {
+    const order = r.opts.map((o, i) => ({ o, correct: i === r.a, k: rng() })).sort((x, y) => x.k - y.k);
+    return { q: r.q, opts: order.map((x) => x.o), a: order.findIndex((x) => x.correct) };
+  });
+}
+function FormulaRush({ done, onFinish }) {
+  const { T, S, F } = useUI();
+  const rounds = useMemo(() => makeFormulaRush(mulberry32(hashStr("formula-" + new Date().toDateString()))), []);
+  const [open, setOpen] = useState(false);
+  const [idx, setIdx] = useState(0);
+  const [score, setScore] = useState(0);
+  const [picked, setPicked] = useState(null);
+  const [over, setOver] = useState(false);
+  const r = rounds[idx];
+  const choose = (i) => {
+    if (picked !== null) return;
+    setPicked(i);
+    const right = i === r.a;
+    const ns = score + (right ? 1 : 0);
+    if (right) setScore(ns);
+    setTimeout(() => {
+      if (idx === rounds.length - 1) { setOver(true); onFinish(ns); }
+      else { setIdx(idx + 1); setPicked(null); setScore(ns); }
+    }, 700);
+  };
+  return (
+    <div style={S.panel}>
+      <div style={S.eyebrow}>🧪 daily formula game · complete the formula · points = XP</div>
+      {!open && !done && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <strong style={{ fontFamily: F.display, fontSize: 16 }}>🧪 Formula Rush</strong>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: T.dim, marginTop: 2 }}>8 formulas, one missing piece each. Up to +80 XP.</div>
+          </div>
+          <button style={S.btn(true)} onClick={() => setOpen(true)}>Play</button>
+        </div>
+      )}
+      {done && !open && <div style={{ marginTop: 8, fontWeight: 700, color: T.dim, fontSize: 14 }}>✅ Played today — new formulas tomorrow!</div>}
+      {open && !over && (
+        <div className="pd-pop" style={{ marginTop: 12 }}>
+          <div style={{ fontFamily: F.mono, fontSize: 12, color: T.dim, marginBottom: 8 }}>formula {idx + 1} / {rounds.length} · points {score}</div>
+          <div style={{ fontFamily: F.mono, fontSize: 17, fontWeight: 700, marginBottom: 12, background: T.slot, padding: "13px 15px", borderRadius: 10, border: `1px solid ${T.edge}` }}>{r.q}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
+            {r.opts.map((o, i) => {
+              const state = picked === null ? "idle" : i === r.a ? "right" : i === picked ? "wrong" : "idle";
+              return (
+                <button key={i} onClick={() => choose(i)}
+                  style={{ padding: "13px 10px", borderRadius: 10, fontFamily: F.body, fontWeight: 700, fontSize: 14, cursor: "pointer",
+                    border: `2px solid ${state === "right" ? T.teal : state === "wrong" ? T.gold : T.edge}`,
+                    background: state === "right" ? T.tealSoft : state === "wrong" ? T.goldSoft : T.panel,
+                    color: state === "right" ? T.teal : state === "wrong" ? T.gold : T.ink }}>
+                  {o}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {over && (
+        <div className="pd-pop" style={{ marginTop: 12, textAlign: "center" }}>
+          <div style={{ fontSize: 32 }}>{score === rounds.length ? "🏆" : score >= 5 ? "🧪" : "🌱"}</div>
+          <div style={{ fontFamily: F.display, fontWeight: 700, fontSize: 18 }}>{score} / {rounds.length} · +{score * 10} XP</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: T.dim, marginTop: 4 }}>Formulas are tools. Every one you know makes problems smaller.</div>
         </div>
       )}
     </div>
@@ -1867,6 +2185,29 @@ const JOURNEY_STAGES = [
   { id: "j13", emoji: "👑", label: "GRAND MASTER", desc: "All badges + all stars. The final title, a golden card to share, and one last mission: teach someone ONE problem — teaching is the proof you truly know it.", test: (st) => st.grandMaster },
 ];
 
+function SessionChart({ timeline }) {
+  const { T, S } = useUI();
+  const RC = useRecharts();
+  if (!RC) return null;
+  const { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Line } = RC;
+  return (
+    <div style={S.panel}>
+      <div style={S.eyebrow}>this session's climb</div>
+      <div style={{ height: 170, marginTop: 12 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={timeline} margin={{ top: 5, right: 10, bottom: 0, left: -20 }}>
+            <CartesianGrid stroke={T.grid} strokeDasharray="3 3" />
+            <XAxis dataKey="n" stroke={T.axis} tick={{ fontSize: 11 }} />
+            <YAxis domain={[0, 100]} stroke={T.axis} tick={{ fontSize: 11 }} />
+            <Tooltip contentStyle={{ background: T.panel, border: `1px solid ${T.edge}`, borderRadius: 10, fontSize: 12, color: T.ink }} labelFormatter={(n) => `after case ${n}`} />
+            <Line type="monotone" dataKey="confidence" stroke={T.teal} strokeWidth={2.5} dot={{ r: 3, fill: T.teal }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 function Journey({ history, earnedBadges, maxCombo, topicStars, bankDone, xp, activeTitle, onShare }) {
   const { T, S, F, mobile } = useUI();
   const overall = overallConfidence(history);
@@ -1888,7 +2229,7 @@ function Journey({ history, earnedBadges, maxCombo, topicStars, bankDone, xp, ac
         <h1 style={S.h1}>{grandMaster ? "👑 You walked the whole road." : nextStage ? `Next stop: ${nextStage.emoji} ${nextStage.label}` : ""}</h1>
         {!grandMaster && nextStage && <p style={{ color: T.dim, fontSize: 14, fontWeight: 600 }}>{nextStage.desc}</p>}
         <div style={{ marginTop: 6 }}><Bar value={Math.round((doneCount / JOURNEY_STAGES.length) * 100)} color={grandMaster ? T.gold : T.accent} /></div>
-        <button style={{ ...S.btn(false), marginTop: 14 }} onClick={onShare}><Share2 size={15} color={T.violet} /> Share my card</button>
+        <button style={{ ...S.btn(false), marginTop: 14 }} onClick={onShare}><Share2 size={15} color={T.accent} /> Share my card</button>
       </div>
 
       {/* the path itself */}
@@ -1902,14 +2243,14 @@ function Journey({ history, earnedBadges, maxCombo, topicStars, bankDone, xp, ac
               <div key={j.id} style={{ display: "flex", gap: 14, opacity: done || isNext ? 1 : 0.45 }}>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <div style={{ width: 38, height: 38, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0,
-                    background: done ? T.tealSoft : isNext ? T.goldSoft : T.slot,
-                    border: `2px solid ${done ? T.teal : isNext ? T.gold : T.edge}` }}>
+                    background: done ? T.tealSoft : isNext ? T.accentSoft : T.slot,
+                    border: `2px solid ${done ? T.teal : isNext ? T.accent : T.edge}` }}>
                     {done ? j.emoji : isNext ? j.emoji : "🔒"}
                   </div>
                   {i < JOURNEY_STAGES.length - 1 && <div style={{ width: 3, flex: 1, minHeight: 18, background: done ? T.teal : T.edge, borderRadius: 2 }} />}
                 </div>
                 <div style={{ paddingBottom: 16 }}>
-                  <div style={{ fontFamily: F.display, fontWeight: 700, fontSize: 15, color: done ? T.teal : isNext ? T.gold : T.dim }}>
+                  <div style={{ fontFamily: F.display, fontWeight: 700, fontSize: 15, color: done ? T.teal : isNext ? T.accent : T.dim }}>
                     {j.label} {done && "✓"}{isNext && " · you are here"}
                   </div>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: T.dim, lineHeight: 1.5 }}>{j.desc}</div>
@@ -1928,7 +2269,7 @@ function Journey({ history, earnedBadges, maxCombo, topicStars, bankDone, xp, ac
             Every badge. Every star. This certificate is yours forever.<br />
             Your final mission: teach ONE problem to a friend or family member. When you can teach it, you truly own it.
           </p>
-          <button style={S.btn(true, T.gold)} onClick={onShare}><Share2 size={15} /> Share my golden card</button>
+          <button style={S.btn(true)} onClick={onShare}><Share2 size={15} /> Share my golden card</button>
         </div>
       )}
 
@@ -1972,30 +2313,15 @@ function Journey({ history, earnedBadges, maxCombo, topicStars, bankDone, xp, ac
         </div>
       </div>
 
-      {history.length >= 2 && (
-        <div style={S.panel}>
-          <div style={S.eyebrow}>this session's climb</div>
-          <div style={{ height: 170, marginTop: 12 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={timeline} margin={{ top: 5, right: 10, bottom: 0, left: -20 }}>
-                <CartesianGrid stroke={T.grid} strokeDasharray="3 3" />
-                <XAxis dataKey="n" stroke={T.axis} tick={{ fontSize: 11 }} />
-                <YAxis domain={[0, 100]} stroke={T.axis} tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={{ background: T.panel, border: `1px solid ${T.edge}`, borderRadius: 10, fontSize: 12, color: T.ink }} labelFormatter={(n) => `after case ${n}`} />
-                <Line type="monotone" dataKey="confidence" stroke={T.teal} strokeWidth={2.5} dot={{ r: 3, fill: T.teal }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
+      {history.length >= 2 && <SessionChart timeline={timeline} />}
 
       {/* badges */}
       <div style={S.panel}>
-        <div style={S.eyebrow}><Award size={13} color={T.violet} /> badges · {earnedBadges.length}/{BADGES.length}</div>
+        <div style={S.eyebrow}><Award size={13} /> badges · {earnedBadges.length}/{BADGES.length}</div>
         <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill,minmax(${mobile ? 128 : 150}px,1fr))`, gap: 10, marginTop: 12 }}>
           {BADGES.map((b, i) => {
             const got = earnedBadges.includes(b.id);
-            const hues = [T.teal, T.gold, T.accent, T.violet];
+            const hues = [T.accent, T.accent, T.accent, T.accent];
             const hue = hues[i % hues.length];
             return (
               <div key={b.id} style={{ padding: "15px 12px", borderRadius: 15, textAlign: "center", border: `1.5px solid ${got ? hue : T.edgeSoft}`, background: got ? hue + "1E" : T.slot, opacity: got ? 1 : 0.5 }}>
@@ -2021,7 +2347,7 @@ function BankScreen({ bankDone, voice, onPick }) {
   const { T, S, F, mobile } = useUI();
   const [filter, setFilter] = useState(-1); // -1 = all
   const shown = BANK.filter((b) => filter === -1 || b.tier === filter);
-  const tierColor = [T.teal, T.gold, T.accent, T.violet];
+  const tierColor = [T.accent, T.accent, T.accent, T.accent];
   return (
     <div style={S.panel}>
       <div style={S.eyebrow}><BookOpen size={13} /> the 99 · every number is always the same problem</div>
@@ -2065,11 +2391,10 @@ function BankScreen({ bankDone, voice, onPick }) {
    device. On deploy, this screen connects to real login
    (Supabase Auth: email code or Google) and progress syncs. */
 const AVATARS = ["🕵️", "🦊", "🐼", "🚀", "🐯", "🌟", "🎧", "🐢"];
-function Login({ defaultVoice, onDone, onGoogle }) {
+function Login({ defaultVoice, onDone, onGoogle, theme, setTheme }) {
   const { T, S, F, mobile } = useUI();
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState(AVATARS[0]);
-  const [world, setWorld] = useState(defaultVoice);
   return (
     <div className="pd-pop" style={{ ...S.panel, marginTop: mobile ? 20 : 48 }}>
       <div style={{ textAlign: "center" }}>
@@ -2092,6 +2417,18 @@ function Login({ defaultVoice, onDone, onGoogle }) {
       <div style={{ ...S.eyebrow, marginTop: 14 }}>your name</div>
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="What should we call you?"
         style={{ width: "100%", boxSizing: "border-box", marginTop: 8, padding: "13px 15px", borderRadius: 12, border: `1.5px solid ${T.edge}`, background: T.slot, color: T.ink, fontFamily: F.body, fontSize: 15, fontWeight: 700, outline: "none" }} />
+      <div style={{ ...S.eyebrow, marginTop: 14 }}>pick your look · changes the whole app, right now</div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        {Object.values(THEME_PACKS).map((th) => (
+          <button key={th.id} onClick={() => setTheme(th.id)} title={th.name}
+            style={{ flex: 1, minWidth: 118, padding: "11px 10px", borderRadius: 12, cursor: "pointer", textAlign: "left", border: `2px solid ${theme === th.id ? T.accent : T.edgeStrong}`, background: th.colors.bg }}>
+            <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+              {[th.colors.accent, th.colors.ink].map((c, i) => <span key={i} style={{ width: 13, height: 13, borderRadius: "50%", background: c }} />)}
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 11.5, color: th.colors.ink }}>{th.name} {theme === th.id && "✓"}</div>
+          </button>
+        ))}
+      </div>
       <div style={{ ...S.eyebrow, marginTop: 14 }}>pick your face</div>
       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
         {AVATARS.map((a) => (
@@ -2101,21 +2438,11 @@ function Login({ defaultVoice, onDone, onGoogle }) {
           </button>
         ))}
       </div>
-      <div style={{ ...S.eyebrow, marginTop: 14 }}>pick your world · change anytime in profile</div>
-      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-        {Object.values(VOICES).map((v) => (
-          <button key={v.id} onClick={() => setWorld(v.id)}
-            style={{ flex: 1, minWidth: 140, textAlign: "left", padding: "12px 13px", borderRadius: 12, border: `2px solid ${world === v.id ? T.accent : T.edge}`, background: world === v.id ? T.accentSoft : T.slot, cursor: "pointer" }}>
-            <div style={{ fontWeight: 800, fontSize: 14, color: world === v.id ? T.accent : T.ink }}>{v.emoji} {v.name}</div>
-            <div style={{ fontSize: 11.5, color: T.dim, fontWeight: 600, marginTop: 2 }}>{v.tagline}</div>
-          </button>
-        ))}
-      </div>
       <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
-        <button style={{ ...S.btn(true), flex: 1 }} disabled={!name.trim()} onClick={() => onDone({ name: name.trim(), avatar }, world)}>
+        <button style={{ ...S.btn(true), flex: 1 }} disabled={!name.trim()} onClick={() => onDone({ name: name.trim(), avatar }, defaultVoice)}>
           Start my journey <ChevronRight size={16} />
         </button>
-        <button style={S.btn(false)} onClick={() => onDone({ name: "Detective", avatar: "🕵️" }, world)}>Just let me in</button>
+        <button style={S.btn(false)} onClick={() => onDone({ name: "Detective", avatar: "🕵️" }, defaultVoice)}>Just let me in</button>
       </div>
 
       <p style={{ fontSize: 11.5, fontWeight: 600, color: T.dim, marginTop: 12, marginBottom: 0 }}>
@@ -2126,7 +2453,7 @@ function Login({ defaultVoice, onDone, onGoogle }) {
 }
 
 /* ── PROFILE: identity + all settings live here ─────────────── */
-function Profile({ profile, setProfile, voice, setVoice, mode, setMode, fontChoice, setFontChoice, xp, activeTitle, earnedBadges, topicStars, bankDone, onShare, onSignOut }) {
+function Profile({ profile, setProfile, voice, setVoice, theme, setTheme, fontChoice, setFontChoice, xp, activeTitle, earnedBadges, topicStars, bankDone, onShare, onSignOut }) {
   const { T, S, F } = useUI();
   const sectionTitle = (icon, text) => <div style={{ ...S.eyebrow, marginTop: 4 }}>{icon} {text}</div>;
   return (
@@ -2138,7 +2465,7 @@ function Profile({ profile, setProfile, voice, setVoice, mode, setMode, fontChoi
             <div style={{ fontFamily: F.display, fontWeight: 700, fontSize: Math.min(F.h1 || 24, 22) }}>{profile.name}</div>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: T.dim }}>{activeTitle} · ⚡ {xp} XP · 🏅 {earnedBadges.length} · ⭐ {topicStars.length} · 📚 {bankDone.length}/99</div>
           </div>
-          <button style={S.btn(false)} onClick={onShare}><Share2 size={15} color={T.violet} /> Share card</button>
+          <button style={S.btn(false)} onClick={onShare}><Share2 size={15} color={T.accent} /> Share card</button>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
           {AVATARS.map((a) => (
@@ -2162,12 +2489,18 @@ function Profile({ profile, setProfile, voice, setVoice, mode, setMode, fontChoi
           ))}
         </div>
 
-        {sectionTitle(mode === "dark" ? <Moon size={12} /> : <Sun size={12} />, "appearance")}
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          {["light", "dark"].map((m) => (
-            <button key={m} onClick={() => setMode(m)}
-              style={{ flex: 1, padding: "12px", borderRadius: 12, border: `2px solid ${mode === m ? T.accent : T.edge}`, background: mode === m ? T.accentSoft : T.slot, color: mode === m ? T.accent : T.ink, fontWeight: 800, fontSize: 13.5, cursor: "pointer", display: "inline-flex", justifyContent: "center", gap: 6 }}>
-              {m === "light" ? <Sun size={15} /> : <Moon size={15} />} {m === "light" ? "Light" : "Dark"} {mode === m && "✓"}
+        {sectionTitle("🎨", "theme · your whole app, your look")}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, marginTop: 10 }}>
+          {Object.values(THEME_PACKS).map((th) => (
+            <button key={th.id} onClick={() => setTheme(th.id)}
+              style={{ padding: "13px 13px", borderRadius: 12, textAlign: "left", cursor: "pointer", border: `2px solid ${theme === th.id ? T.accent : T.edgeStrong}`, background: th.colors.bg, boxShadow: theme === th.id ? `0 0 0 3px ${T.accentSoft}` : "none" }}>
+              <div style={{ display: "flex", gap: 5, marginBottom: 7 }}>
+                {[th.colors.accent, th.colors.ink, th.colors.slot].map((c, i) => (
+                  <span key={i} style={{ width: 16, height: 16, borderRadius: "50%", background: c, border: `1px solid ${th.colors.edgeStrong}` }} />
+                ))}
+              </div>
+              <div style={{ fontWeight: 800, fontSize: 13, color: th.colors.ink }}>{th.emoji} {th.name} {theme === th.id && "✓"}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: th.colors.dim }}>{th.hint}</div>
             </button>
           ))}
         </div>
@@ -2223,15 +2556,16 @@ function CardPage() {
 export default function ProjectDecode() {
   if (typeof window !== "undefined" && window.location.pathname.replace(/\/$/, "") === "/card") return <CardPage />;
   const saved = useMemo(loadSave, []);
-  const [mode, setMode] = useState(saved?.mode || "light");
+  const [theme, setTheme] = useState(saved?.theme && THEME_PACKS[saved.theme] ? saved.theme : "duo");
   const [voice, setVoice] = useState(saved?.voice || "real");
   const [fontChoice, setFontChoice] = useState(saved?.fontChoice || "default");
   const [profile, setProfile] = useState(saved?.profile || null);
   const mobile = useIsMobile();
   const V = VOICES[voice];
-  const F = useMemo(() => resolveFonts(V, fontChoice), [V, fontChoice]);
-  const T = useMemo(() => buildPalette(mode, voice), [mode, voice]);
-  const S = useMemo(() => makeStyles(T, F, V, mobile), [T, F, V, mobile]);
+  const TH = THEME_PACKS[theme];
+  const F = useMemo(() => resolveFonts(TH, fontChoice), [TH, fontChoice]);
+  const T = useMemo(() => buildPalette(theme), [theme]);
+  const S = useMemo(() => makeStyles(T, F, TH, mobile), [T, F, TH, mobile]);
 
   const [screen, setScreen] = useState(saved?.profile ? "checkin" : "login");
   const [energy, setEnergy] = useState(3);
@@ -2253,6 +2587,12 @@ export default function ProjectDecode() {
   const [topicStars, setTopicStars] = useState(saved?.topicStars ?? []);
   const [quizDate, setQuizDate] = useState(saved?.quizDate ?? "");
   const [gameDate, setGameDate] = useState(saved?.gameDate ?? "");
+  const [formulaDate, setFormulaDate] = useState(saved?.formulaDate ?? "");
+  const [bestFormula, setBestFormula] = useState(saved?.bestFormula ?? 0);
+  const [storyProgress, setStoryProgress] = useState(saved?.storyProgress ?? 0);
+  const [storyItems, setStoryItems] = useState(saved?.storyItems ?? []);
+  const [storyOutro, setStoryOutro] = useState(saved?.storyOutro ?? "");
+  const formulaDone = formulaDate === todayStr;
   const quizDone = quizDate === todayStr;
   const gameDone = gameDate === todayStr;
   const [bestQuiz, setBestQuiz] = useState(saved?.bestQuiz ?? 0);
@@ -2287,13 +2627,21 @@ export default function ProjectDecode() {
     const nextCombo = clean ? combo + 1 : 0;
     const nextMax = Math.max(maxCombo, nextCombo);
     const nextXp = xp + gained;
-    const state = { history: nextHistory, xp: nextXp, maxCombo: nextMax, bestQuiz, bestGame, topicStars };
+    const state = { history: nextHistory, xp: nextXp, maxCombo: nextMax, bestQuiz, bestGame, topicStars, bestFormula, storyProgress };
     const newlyEarned = BADGES.filter((b) => !earnedBadges.includes(b.id) && b.test(state));
 
     setHistory(nextHistory); setXp(nextXp); setCombo(nextCombo); setMaxCombo(nextMax);
     setEarnedBadges((e) => [...e, ...newlyEarned.map((b) => b.id)]);
     if (!loot.duplicate) setRelics((r) => [...r, loot.item.id]);
     if (quest.daily) setDailyDate(todayStr);
+    if (quest.storyChapter != null && quest.storyChapter === storyProgress) {
+      const next = storyProgress + 1;
+      setStoryProgress(next);
+      const ch = STORY_SEASON.chapters[quest.storyChapter];
+      if (ch?.outro) setStoryOutro(ch.outro(`${quest.answer} ${quest.unit}`));
+      if (next >= STORY_SEASON.chapters.length) setXp((x) => x + 150); // season bonus
+      recheckBadges({ storyProgress: next });
+    }
     if (quest.boss) setBossesDone((n) => n + 1);
     if (quest.bankId && !bankDone.includes(quest.bankId)) setBankDone((d) => [...d, quest.bankId]);
     const best = [...MILESTONES].reverse().find((m) => nextXp >= m.xp);
@@ -2306,12 +2654,12 @@ export default function ProjectDecode() {
   useEffect(() => {
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify({
-        mode, voice, fontChoice, profile, xp, history, earnedBadges, activeTitle,
+        theme, voice, fontChoice, profile, xp, history, earnedBadges, activeTitle,
         combo, maxCombo, bossesDone, relics, bankDone, topicStars, bestQuiz, bestGame,
-        dailyDate, quizDate, gameDate,
+        dailyDate, quizDate, gameDate, formulaDate, bestFormula, storyProgress, storyItems, storyOutro,
       }));
     } catch { /* storage full or blocked — app still works */ }
-  }, [mode, voice, fontChoice, profile, xp, history, earnedBadges, activeTitle, combo, maxCombo, bossesDone, relics, bankDone, topicStars, bestQuiz, bestGame, dailyDate, quizDate, gameDate]);
+  }, [theme, voice, fontChoice, profile, xp, history, earnedBadges, activeTitle, combo, maxCombo, bossesDone, relics, bankDone, topicStars, bestQuiz, bestGame, dailyDate, quizDate, gameDate, formulaDate, bestFormula, storyProgress, storyItems, storyOutro]);
 
   // Google login (only when Supabase is configured)
   useEffect(() => {
@@ -2338,7 +2686,7 @@ export default function ProjectDecode() {
     : null;
 
   const recheckBadges = (patch = {}) => {
-    const state = { history, xp, maxCombo, bestQuiz, bestGame, topicStars, ...patch };
+    const state = { history, xp, maxCombo, bestQuiz, bestGame, topicStars, bestFormula, storyProgress, ...patch };
     const newly = BADGES.filter((b) => !earnedBadges.includes(b.id) && b.test(state));
     if (newly.length) setEarnedBadges((e) => [...e, ...newly.map((b) => b.id)]);
   };
@@ -2358,6 +2706,10 @@ export default function ProjectDecode() {
     setQuizDate(todayStr); setXp((x) => x + score * 15);
     const nb = Math.max(bestQuiz, score); setBestQuiz(nb); recheckBadges({ bestQuiz: nb });
   };
+  const finishFormula = (score) => {
+    setFormulaDate(todayStr); setXp((x) => x + score * 10);
+    const nb = Math.max(bestFormula, score); setBestFormula(nb); recheckBadges({ bestFormula: nb });
+  };
   const finishGame = (score) => {
     setGameDate(todayStr); setXp((x) => x + score * 10);
     const nb = Math.max(bestGame, score); setBestGame(nb); recheckBadges({ bestGame: nb });
@@ -2365,9 +2717,9 @@ export default function ProjectDecode() {
   const grandMaster = earnedBadges.length >= BADGES.length && topicStars.length >= Object.keys(CONCEPTS).length;
 
   return (
-    <UICtx.Provider value={{ T, S, F, V, mode, mobile }}>
+    <UICtx.Provider value={{ T, S, F, V, TH, mode: TH.dark ? "dark" : "light", mobile }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Fraunces:wght@600;700&family=Lora:wght@500;600;700&family=Nunito:wght@500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Fraunces:wght@600;700&family=Lora:wght@500;600;700&family=Nunito:wght@500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
         @keyframes pdQuoteIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
         .pd-quote { animation: pdQuoteIn .6s ease; }
         @keyframes pdPop { from { opacity: 0; transform: scale(.97) translateY(4px); } to { opacity: 1; transform: none; } }
@@ -2376,6 +2728,9 @@ export default function ProjectDecode() {
         .pd-confetti { animation: pdFall linear forwards; }
         @keyframes pdSpin { to { transform: rotate(360deg); } }
         .pd-spin { animation: pdSpin 1s linear infinite; }
+        button { transition: filter .15s ease, transform .1s ease; }
+        button:hover:not(:disabled) { filter: brightness(0.96); }
+        button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
         .pd-choice:hover { transform: translateY(-1px); }
         .pd-card { transition: border .2s ease, transform .15s ease; }
         .pd-card:hover { transform: translateY(-1px); }
@@ -2391,12 +2746,14 @@ export default function ProjectDecode() {
           )}
           {screen !== "login" && <QuoteBanner />}
           {screen === "login" && (
-            <Login defaultVoice={voice} onDone={(prof, w) => { setProfile(prof); setVoice(w); setScreen("checkin"); }} onGoogle={googleLogin} />
+            <Login defaultVoice={voice} onDone={(prof, w) => { setProfile(prof); setVoice(w); setScreen("checkin"); }} onGoogle={googleLogin} theme={theme} setTheme={setTheme} />
           )}
           {screen === "checkin" && <CheckIn onDone={(lvl) => { setEnergy(lvl); setScreen("log"); }} />}
           {screen === "log" && (
             <CaseBoard energy={energy} dailyDone={dailyDone} dailyQuest={dailyQuest} history={history} bossReady={bossReady} onPick={startQuest} onBoss={startBoss} voice={voice}
               quizDone={quizDone} gameDone={gameDone} onQuiz={finishQuiz} onGame={finishGame} topicStars={topicStars}
+              storyProgress={storyProgress} formulaDone={formulaDone} onFormula={finishFormula}
+              storyItems={storyItems} onStoryItem={(it) => setStoryItems((xs) => [...xs, it])} storyOutro={storyOutro}
               onSelfTest={(k) => { setTestConcept(k); setScreen("selftest"); }} />
           )}
           {screen === "story" && <StoryMode quest={quest} onPass={() => setScreen("translate")} onBack={() => setScreen("log")} />}
@@ -2409,7 +2766,7 @@ export default function ProjectDecode() {
           {screen === "forge" && <Rewards xp={xp} activeTitle={activeTitle} onEquip={setActiveTitle} relics={relics} />}
           {screen === "bank" && <BankScreen bankDone={bankDone} voice={voice} onPick={startQuest} />}
           {screen === "profile" && profile && (
-            <Profile profile={profile} setProfile={setProfile} voice={voice} setVoice={setVoice} mode={mode} setMode={setMode}
+            <Profile profile={profile} setProfile={setProfile} voice={voice} setVoice={setVoice} theme={theme} setTheme={setTheme}
               fontChoice={fontChoice} setFontChoice={setFontChoice} xp={xp} activeTitle={activeTitle}
               earnedBadges={earnedBadges} topicStars={topicStars} bankDone={bankDone}
               onShare={() => setShareOpen(true)} onSignOut={() => { if (supabase) supabase.auth.signOut(); setProfile(null); setScreen("login"); }} />

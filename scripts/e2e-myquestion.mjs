@@ -9,7 +9,7 @@ import fs from "fs";
 
 const src = fs.readFileSync("src/App.jsx", "utf8");
 fs.writeFileSync("src/AppTest.jsx", src + `
-export { UICtx, VOICES, CONCEPTS, BADGES, buildPalette, makeStyles, resolveFonts,
+export { UICtx, VOICES, CONCEPTS, BADGES, THEME_PACKS, buildPalette, makeStyles, resolveFonts,
   parseUserQuestion, StoryMode, Translation, Calculation, Complete };
 `);
 execSync(`npx esbuild src/AppTest.jsx --bundle --format=esm --outfile=scripts/.e2e-bundle.mjs --loader:.jsx=jsx --external:react --external:react-dom '--define:import.meta.env={"VITE_SUPABASE_URL":"","VITE_SUPABASE_ANON_KEY":""}'`, { stdio: "pipe" });
@@ -73,10 +73,10 @@ queue = [GOOD]; calls = 0;
   ok("1j Case Architect badge fires", arch.test({ history: [entry], maxCombo: 1 }));
   ok("1k XP sane", q.xp > 0 && Number.isFinite(q.xp));
   // render every case screen with this custom quest, both voices/modes
-  for (const voice of ["real", "arcade"]) for (const mode of ["dark", "light"]) {
-    const V = M.VOICES[voice], F = M.resolveFonts(V, "default"), T = M.buildPalette(mode, voice);
-    const S = M.makeStyles(T, F, V, false);
-    const wrap = el => React.createElement(M.UICtx.Provider, { value: { T, S, F, V, mode, mobile: false } }, el);
+  for (const voice of ["real", "arcade"]) for (const themeKey of ["duo", "midnight"]) {
+    const V = M.VOICES[voice], TH = M.THEME_PACKS[themeKey], F = M.resolveFonts(TH, "default"), T = M.buildPalette(themeKey);
+    const S = M.makeStyles(T, F, TH, false);
+    const wrap = el => React.createElement(M.UICtx.Provider, { value: { T, S, F, V, TH, mode: TH.dark ? "dark" : "light", mobile: false } }, el);
     const attempt = { retries: 0, hint: false, assist: false, aiUses: 0 };
     const result = { gained: q.xp, mult: 1, newBadges: [arch], confBefore: 0, confAfter: 20, loot: null, praise: "!" };
     try {
@@ -85,7 +85,7 @@ queue = [GOOD]; calls = 0;
       renderToString(wrap(React.createElement(M.Calculation, { quest: q, attempt, onPass: () => {}, countRetry: () => {}, useHint: () => {}, hintUsed: false, onAssist: () => {}, onBack: () => {} })));
       renderToString(wrap(React.createElement(M.Complete, { quest: q, result, onHome: () => {}, onShare: () => {} })));
       pass++;
-    } catch (e) { fail++; console.log(`  ❌ 1l render ${voice}/${mode}: ${e.message}`); }
+    } catch (e) { fail++; console.log(`  ❌ 1l render ${voice}/${themeKey}: ${e.message}`); }
   }
 }
 
